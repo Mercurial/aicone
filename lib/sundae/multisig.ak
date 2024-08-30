@@ -1,18 +1,17 @@
+use aiken/collection/list
+use aiken/collection/pairs
 use aiken/interval.{Finite, Interval, IntervalBound}
-use aiken/list
-use aiken/pairs
-use aiken/time.{PosixTime}
-use aiken/transaction.{ValidityRange}
-use aiken/transaction/credential.{Inline, ScriptCredential, StakeCredential}
-use sundae/test_utils.{trace_example}
+use cardano/address.{Credential}
+use cardano/assets.{Lovelace}
+use cardano/transaction.{ValidityRange}
 
 pub type MultisigScript {
   Signature { key_hash: ByteArray }
   AllOf { scripts: List<MultisigScript> }
   AnyOf { scripts: List<MultisigScript> }
   AtLeast { required: Int, scripts: List<MultisigScript> }
-  Before { time: PosixTime }
-  After { time: PosixTime }
+  Before { time: Int }
+  After { time: Int }
   Script { script_hash: ByteArray }
 }
 
@@ -20,7 +19,7 @@ pub fn satisfied(
   script: MultisigScript,
   signatories: List<ByteArray>,
   valid_range: ValidityRange,
-  withdrawals: Pairs<StakeCredential, Int>,
+  withdrawals: Pairs<Credential, Lovelace>,
 ) -> Bool {
   when script is {
     Signature { key_hash } -> list.has(signatories, key_hash)
@@ -61,7 +60,7 @@ pub fn satisfied(
         _ -> False
       }
     Script { script_hash } ->
-      pairs.has_key(withdrawals, Inline(ScriptCredential(script_hash)))
+      pairs.has_key(withdrawals, address.Script(script_hash))
   }
 }
 
@@ -70,23 +69,23 @@ test satisfying() {
   let key_hash2 = "key2"
   let key_hash3 = "key3"
   let sig1 = Signature { key_hash: key_hash1 }
-  expect trace_example(@"Signature", sig1)
+  trace @"Signature": sig1
   let sig2 = Signature { key_hash: key_hash2 }
   let sig3 = Signature { key_hash: key_hash3 }
   let all_of = AllOf { scripts: [sig1, sig2] }
-  expect trace_example(@"AllOf", all_of)
+  trace @"AllOf": all_of
   let any_of = AnyOf { scripts: [sig1, sig2] }
-  expect trace_example(@"AnyOf", any_of)
+  trace @"AnyOf": any_of
   let at_least = AtLeast { required: 2, scripts: [sig1, sig2, sig3] }
-  expect trace_example(@"AtLeast", at_least)
+  trace @"AtLeast": at_least
   let before = Before { time: 10 }
-  expect trace_example(@"Before", before)
+  trace @"Before": before
   let after = After { time: 10 }
-  expect trace_example(@"After", after)
+  trace @"After": after
   let between = AllOf { scripts: [After { time: 10 }, Before { time: 15 }] }
-  expect trace_example(@"Between", between)
+  trace @"Between": between
   let script = Script { script_hash: "some_script" }
-  expect trace_example(@"Script", script)
+  trace @"Script": script
   let vesting =
     AnyOf {
       scripts: [
@@ -97,7 +96,7 @@ test satisfying() {
         script,
       ],
     }
-  expect trace_example(@"Vesting", vesting)
+  trace @"Vesting": vesting
   // vested
   let valid_range =
     fn(lo: Int, hi: Int) -> ValidityRange {
@@ -112,16 +111,16 @@ test satisfying() {
         },
       }
     }
-  let no_w: Pairs<StakeCredential, Int> =
+  let no_w: Pairs<Credential, Lovelace> =
     []
   let correct_w =
-    [Pair(Inline(ScriptCredential("some_script")), 0)]
+    [Pair(address.Script("some_script"), 0)]
   let incorrect_w =
-    [Pair(Inline(ScriptCredential("other_script")), 0)]
+    [Pair(address.Script("other_script"), 0)]
   let both_w =
     [
-      Pair(Inline(ScriptCredential("some_script")), 0),
-      Pair(Inline(ScriptCredential("other_script")), 0),
+      Pair(address.Script("some_script"), 0),
+      Pair(address.Script("other_script"), 0),
     ]
   // Helper method because ? binds more tightly than !
   let unsatisfied =
@@ -129,7 +128,7 @@ test satisfying() {
       n: MultisigScript,
       s: List<ByteArray>,
       v: ValidityRange,
-      w: Pairs<StakeCredential, Int>,
+      w: Pairs<Credential, Lovelace>,
     ) {
       !satisfied(n, s, v, w)
     }
